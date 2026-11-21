@@ -1,0 +1,10 @@
+node_modules/
+build/
+web/dist/
+.leavemate/
+.leavemate-tests/
+test-results/
+playwright-report/
+.env
+.env.*
+!.env.example
