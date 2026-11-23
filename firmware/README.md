@@ -13,7 +13,7 @@ Disconnect power while wiring. Use the ESP32 pin numbers printed on your board. 
 | RC522 SCK | GPIO18 |
 | RC522 MISO | GPIO19 |
 | RC522 MOSI | GPIO23 |
-| RC522 SDA / SS | GPIO21 |
+| RC522 SDA / SS | GPIO5 |
 | RC522 RST | GPIO22 |
 | RC522 IRQ | Leave disconnected |
 | Inside IR OUT | GPIO25 |
