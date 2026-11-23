@@ -33,4 +33,10 @@ jobs:
           arduino-cli core install esp32:esp32@2.0.17
           arduino-cli lib install MFRC522@1.4.12 ArduinoJson@7.4.3
       - name: Compile LeaveMate station for ESP32
-        run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/LeaveMateStation
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir "$RUNNER_TEMP/leavemate-esp32" firmware/LeaveMateStation
+      - name: Save ESP32 flash images
+        uses: actions/upload-artifact@v4
+        with:
+          name: leavemate-esp32
+          path: ${{ runner.temp }}/leavemate-esp32/*.bin
+          if-no-files-found: error

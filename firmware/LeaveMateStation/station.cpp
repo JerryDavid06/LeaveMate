@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <MFRC522.h>
+#include <Preferences.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -34,6 +35,9 @@ constexpr uint32_t heartbeatMs = 30000;
 constexpr uint32_t sendLeadMs = 1500;
 constexpr size_t maxIdentifiers = 300;
 constexpr char departuresPath[] = "/api/gateway/departures";
+constexpr char settingsNamespace[] = "leavemate";
+constexpr char settingsKey[] = "station";
+constexpr size_t maxSetupLine = 2048;
 using Tag = std::array<char, 21>;
 
 MFRC522 reader(RFID_CS, RFID_RESET);
@@ -46,6 +50,49 @@ std::atomic<bool> readerOnline{false};
 std::atomic<bool> scanOpen{false};
 std::atomic<bool> scanFault{false};
 std::atomic<bool> busy{false};
+String deviceKey;
+bool awaitingSetup = false;
+
+bool readSetup(const String& line, JsonDocument& settings) {
+  if (deserializeJson(settings, line, DeserializationOption::NestingLimit(2))) return false;
+  if (!settings["ssid"].is<const char*>() || !settings["password"].is<const char*>() ||
+      !settings["deviceKey"].is<const char*>()) return false;
+  const auto ssid = settings["ssid"].as<JsonString>();
+  const auto password = settings["password"].as<JsonString>();
+  const auto key = settings["deviceKey"].as<JsonString>();
+  return ssid.size() > 0 && ssid.size() <= 32 && strlen(ssid.c_str()) == ssid.size() &&
+         password.size() <= 64 && strlen(password.c_str()) == password.size() &&
+         key.size() > 0 && key.size() <= 128 && strlen(key.c_str()) == key.size() &&
+         !strpbrk(key.c_str(), "\r\n");
+}
+
+void pollSetup() {
+  static String line;
+  static bool tooLong = false;
+  for (size_t i = 0; i < 128 && Serial.available(); i++) {
+    const char ch = static_cast<char>(Serial.read());
+    if (ch != '\n') {
+      if (!tooLong && ch != '\r') tooLong = line.length() >= maxSetupLine || !line.concat(ch);
+      continue;
+    }
+    JsonDocument settings;
+    if (!tooLong && readSetup(line, settings)) {
+      Preferences storage;
+      if (storage.begin(settingsNamespace) && storage.putString(settingsKey, line) == line.length()) {
+        storage.end();
+        Serial.println("SETUP_SAVED");
+        Serial.flush();
+        ESP.restart();
+        return;
+      }
+      Serial.println("SETUP_STORAGE_ERROR");
+    } else {
+      Serial.println("SETUP_INVALID");
+    }
+    line = "";
+    tooLong = false;
+  }
+}
 
 bool readerResponds() {
   const byte version = reader.PCD_ReadRegister(MFRC522::VersionReg);
@@ -99,7 +146,7 @@ int post(const String& path, const JsonDocument& document, String* response = nu
   request.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
   if (!request.begin(connection, String(API_ORIGIN) + path)) return -1;
   request.addHeader("Content-Type", "application/json");
-  request.addHeader("x-device-key", DEVICE_API_KEY);
+  request.addHeader("x-device-key", deviceKey);
   String body;
   serializeJson(document, body);
   const int status = request.POST(body);
@@ -112,7 +159,13 @@ void heartbeat() {
   JsonDocument body;
   body["deviceId"] = STATION_ID;
   const int status = post("/api/gateway/heartbeat", body);
-  if (status != 204) Serial.printf("Heartbeat failed (HTTP %d).\n", status);
+  if (status != 204) {
+    Serial.printf("Heartbeat failed (HTTP %d).\n", status);
+  } else {
+    static bool first = true;
+    if (first) Serial.println("Connected to LeaveMate.");
+    first = false;
+  }
 }
 
 bool addTag(std::vector<Tag>& seen, const Tag& tag) {
@@ -244,6 +297,7 @@ bool triggered(int pin) {
 }  // namespace
 
 void setup() {
+  Serial.setRxBufferSize(maxSetupLine + 2);
   Serial.begin(115200);
   pinMode(IR_INSIDE, INPUT);
   pinMode(IR_OUTSIDE, INPUT);
@@ -253,16 +307,28 @@ void setup() {
   if (!readerOnline.load()) Serial.println("RC522 not responding. Check its SPI wiring and 3.3 V power.");
 
   Serial.println("LeaveMate station. Tap a tag to display its Detection identifier.");
-  if (!WIFI_SSID[0] || !DEVICE_API_KEY[0]) {
-    Serial.println("Add secrets.h to enable the hosted gateway. UID reads are available in setup mode.");
-    return;
+  String ssid = WIFI_SSID;
+  String password = WIFI_PASSWORD;
+  deviceKey = DEVICE_API_KEY;
+  if (ssid.isEmpty() || deviceKey.isEmpty()) {
+    Preferences storage;
+    JsonDocument settings;
+    if (!storage.begin(settingsNamespace, true) || !readSetup(storage.getString(settingsKey), settings)) {
+      awaitingSetup = true;
+      Serial.println("SETUP_REQUIRED");
+      return;
+    }
+    ssid = settings["ssid"].as<String>();
+    password = settings["password"].as<String>();
+    deviceKey = settings["deviceKey"].as<String>();
   }
 
   setenv("TZ", "UTC0", 1);
   tzset();
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.persistent(false);
+  WiFi.begin(ssid.c_str(), password.c_str());
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   scannedTags = xQueueCreate(48, sizeof(Tag));
   scanLock = xSemaphoreCreateMutex();
@@ -272,6 +338,7 @@ void setup() {
 }
 
 void poll() {
+  if (awaitingSetup) pollSetup();
   const uint32_t now = millis();
   static uint32_t readerChecked = now;
   if (now - readerChecked >= 1000) {
