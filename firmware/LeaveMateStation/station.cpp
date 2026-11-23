@@ -282,7 +282,16 @@ void networkLoop(void*) {
 }
 
 void readTag() {
-  if (!reader.PICC_IsNewCardPresent() || !reader.PICC_ReadCardSerial()) return;
+  if (!reader.PICC_IsNewCardPresent()) return;
+  if (!reader.PICC_ReadCardSerial()) {
+    static uint32_t lastWarning = 0;
+    const uint32_t now = millis();
+    if (now - lastWarning >= 1000) {
+      Serial.println("RC522 saw a tag but could not read its UID.");
+      lastWarning = now;
+    }
+    return;
+  }
   const auto uidSize = reader.uid.size;
   if (uidSize > 0 && uidSize <= 10) {
     Tag id{};
@@ -315,6 +324,16 @@ void setup() {
   pinMode(IR_OUTSIDE, INPUT);
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI, RFID_CS);
   reader.PCD_Init();
+  const byte version = reader.PCD_ReadRegister(MFRC522::VersionReg);
+  if (version != 0 && version != 0xff) {
+    const bool testSupported = version == 0x88 || version == 0x90 || version == 0x91 || version == 0x92;
+    const bool passed = testSupported && reader.PCD_PerformSelfTest();
+    if (testSupported && !passed) reader.PCD_Init();
+    const byte rfOutputs = reader.PCD_ReadRegister(MFRC522::TxControlReg) & 0x03;
+    Serial.printf("RC522 version 0x%02X, self-test %s, RF outputs %s.\n", static_cast<unsigned>(version),
+                  testSupported ? (passed ? "passed" : "failed") : "unavailable",
+                  rfOutputs == 0x03 ? "enabled" : "disabled");
+  }
   readerOnline.store(readerResponds());
   if (!readerOnline.load()) Serial.println("RC522 not responding. Check its SPI wiring and 3.3 V power.");
 
