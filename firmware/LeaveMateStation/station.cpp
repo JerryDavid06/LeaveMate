@@ -97,19 +97,7 @@ void pollSetup() {
 
 bool readerResponds() {
   const byte version = reader.PCD_ReadRegister(MFRC522::VersionReg);
-  return version != 0 && version != 0xff &&
-         (reader.PCD_ReadRegister(MFRC522::TxControlReg) & 0x03) == 0x03;
-}
-
-void initializeReader() {
-  pinMode(RFID_CS, OUTPUT);
-  digitalWrite(RFID_CS, HIGH);
-  pinMode(RFID_RESET, OUTPUT);
-  digitalWrite(RFID_RESET, LOW);
-  delay(2);
-  digitalWrite(RFID_RESET, HIGH);
-  delay(50);
-  reader.PCD_Init();
+  return version != 0 && version != 0xff && version != 0xee;
 }
 
 bool hasNetworkTime() {
@@ -304,6 +292,7 @@ void readTag() {
     }
     return;
   }
+  if (!readerOnline.exchange(true)) Serial.println("RC522 responding again.");
   const auto uidSize = reader.uid.size;
   if (uidSize > 0 && uidSize <= 10) {
     Tag id{};
@@ -335,17 +324,10 @@ void setup() {
   pinMode(IR_INSIDE, INPUT);
   pinMode(IR_OUTSIDE, INPUT);
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI, RFID_CS);
-  initializeReader();
+  reader.PCD_Init();
+  delay(100);
   const byte version = reader.PCD_ReadRegister(MFRC522::VersionReg);
-  if (version != 0 && version != 0xff) {
-    const bool testSupported = version == 0x88 || version == 0x90 || version == 0x91 || version == 0x92;
-    const bool passed = testSupported && reader.PCD_PerformSelfTest();
-    if (testSupported && !passed) initializeReader();
-    const byte rfOutputs = reader.PCD_ReadRegister(MFRC522::TxControlReg) & 0x03;
-    Serial.printf("RC522 version 0x%02X, self-test %s, RF outputs %s.\n", static_cast<unsigned>(version),
-                  testSupported ? (passed ? "passed" : "failed") : "unavailable",
-                  rfOutputs == 0x03 ? "enabled" : "disabled");
-  }
+  Serial.printf("RC522 firmware version 0x%02X.\n", static_cast<unsigned>(version));
   readerOnline.store(readerResponds());
   if (!readerOnline.load()) Serial.println("RC522 not responding. Check its SPI wiring and 3.3 V power.");
 
@@ -391,15 +373,9 @@ void poll() {
   if (awaitingSetup) pollSetup();
   const uint32_t now = millis();
   static uint32_t readerChecked = now;
-  static uint32_t readerRetried = now;
   if (now - readerChecked >= 1000) {
     readerChecked = now;
-    bool available = readerResponds();
-    if (!available && !scanOpen.load() && now - readerRetried >= 5000) {
-      readerRetried = now;
-      initializeReader();
-      available = readerResponds();
-    }
+    const bool available = readerResponds();
     const bool wasAvailable = readerOnline.exchange(available);
     if (!available && wasAvailable) Serial.println("RC522 not responding. Check its SPI wiring and 3.3 V power.");
     if (available && !wasAvailable) Serial.println("RC522 responding again.");
@@ -428,7 +404,7 @@ void poll() {
     Serial.println("Entry detected.");
   }
 
-  if (readerOnline.load()) readTag();
+  readTag();
   delay(5);
 }
 
