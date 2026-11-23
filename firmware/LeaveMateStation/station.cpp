@@ -32,6 +32,7 @@ namespace station {
 namespace {
 
 constexpr uint32_t heartbeatMs = 30000;
+constexpr uint32_t wifiRetryMs = 30000;
 constexpr uint32_t sendLeadMs = 1500;
 constexpr size_t maxIdentifiers = 300;
 constexpr char departuresPath[] = "/api/gateway/departures";
@@ -256,13 +257,24 @@ void verifyDeparture() {
 
 void networkLoop(void*) {
   uint32_t lastHeartbeat = millis() - heartbeatMs;
+  uint32_t lastWifiRetry = millis();
+  bool clockReady = false;
   for (;;) {
     if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(150)) > 0) {
       verifyDeparture();
       busy.store(false);
     }
     const uint32_t now = millis();
-    if (!busy.load() && hasNetworkTime() && readerOnline.load() && now - lastHeartbeat >= heartbeatMs) {
+    if (WiFi.status() == WL_CONNECTED) {
+      lastWifiRetry = now;
+    } else if (now - lastWifiRetry >= wifiRetryMs) {
+      lastWifiRetry = now;
+      WiFi.reconnect();
+    }
+    const bool ready = hasNetworkTime();
+    if (ready && !clockReady) Serial.println("Wi-Fi clock synchronized.");
+    clockReady = ready;
+    if (!busy.load() && ready && readerOnline.load() && now - lastHeartbeat >= heartbeatMs) {
       lastHeartbeat = now;
       heartbeat();
     }
@@ -325,6 +337,13 @@ void setup() {
 
   setenv("TZ", "UTC0", 1);
   tzset();
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+      Serial.println("Wi-Fi connected.");
+    } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+      Serial.printf("Wi-Fi disconnected (reason %u).\n", static_cast<unsigned>(info.wifi_sta_disconnected.reason));
+    }
+  });
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(false);
@@ -343,8 +362,11 @@ void poll() {
   static uint32_t readerChecked = now;
   if (now - readerChecked >= 1000) {
     readerChecked = now;
-    readerOnline.store(readerResponds());
-    if (scanOpen.load() && !readerOnline.load()) scanFault.store(true);
+    const bool available = readerResponds();
+    const bool wasAvailable = readerOnline.exchange(available);
+    if (!available && wasAvailable) Serial.println("RC522 not responding. Check its SPI wiring and 3.3 V power.");
+    if (available && !wasAvailable) Serial.println("RC522 responding again.");
+    if (scanOpen.load() && !available) scanFault.store(true);
   }
 
   const bool inside = insideSensor.update(triggered(IR_INSIDE), now);
