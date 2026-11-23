@@ -9,10 +9,12 @@
 #include <WiFiClientSecure.h>
 #include <esp_system.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 

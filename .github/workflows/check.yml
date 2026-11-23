@@ -14,3 +14,23 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+  firmware:
+    runs-on: ubuntu-latest
+    env:
+      ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify IR direction and debounce logic
+        run: |
+          c++ -std=c++11 -Wall -Wextra -Werror firmware/tests/direction_test.cpp -o "$RUNNER_TEMP/leavemate-direction"
+          "$RUNNER_TEMP/leavemate-direction"
+      - uses: arduino/setup-arduino-cli@v2.0.0
+        with:
+          version: "1.5.1"
+      - name: Install ESP32 core and libraries
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@2.0.17
+          arduino-cli lib install MFRC522@1.4.12 ArduinoJson@7.4.3
+      - name: Compile LeaveMate station for ESP32
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/LeaveMateStation
