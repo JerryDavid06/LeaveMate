@@ -98,7 +98,9 @@ export async function createApp(database: Database, config: {
   });
   app.post('/api/gateway/departures/:id/reports', async (req, res) => {
     const id = uuid.parse(req.params.id);
-    const report = z.strictObject({ identifiers: z.array(text(120)).max(300), complete: z.boolean() }).parse(req.body);
+    const report = z.strictObject({
+      identifiers: z.array(text(120)).max(300), complete: z.boolean(), requireInWindow: z.boolean().optional(),
+    }).parse(req.body);
     if (!window || window.event.id !== id || engine.progress?.id !== id || !window.provider.report(report)) {
       throw new AppError(409, 'This detection window is unavailable.');
     }

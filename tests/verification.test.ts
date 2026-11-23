@@ -104,7 +104,7 @@ test('item CRUD, validation, realtime simulation, alerts and durable history', a
     const reports = '/gateway/departures/' + event.id + '/reports';
     const hwResult = once(socket, 'verification_completed');
     assert.equal((await api(reports, 'POST', { identifiers: ['generic-wallet'], complete: false }, gateway)).status, 204);
-    assert.equal((await api(reports, 'POST', { identifiers: [], complete: true }, gateway)).status, 204);
+    assert.equal((await api(reports, 'POST', { identifiers: [], complete: true, requireInWindow: true }, gateway)).status, 204);
     assert.equal((await state()).sessions.length, 2);
     const hardware = (await hwResult)[0] as Session;
     assert.equal(hardware.missing, 1);
@@ -118,6 +118,9 @@ test('item CRUD, validation, realtime simulation, alerts and durable history', a
     const failed = once(socket, 'verification_failed');
     assert.equal((await api('/gateway/departures', 'POST', noCompletion, gateway)).status, 202);
     await pause(1100);
+    assert.equal((await api('/gateway/departures/' + noCompletion.id + '/reports', 'POST', {
+      identifiers: ['generic-wallet'], complete: true, requireInWindow: true,
+    }, gateway)).status, 409);
     assert.equal((await state()).sessions.length, 3);
     assert.equal((await failed)[0].id, noCompletion.id);
     assert.equal((await state()).alerts.length, 2);

@@ -28,16 +28,15 @@ export class SimulationDetectionProvider implements DetectionProvider {
 interface Report {
   identifiers: string[];
   complete: boolean;
+  requireInWindow?: boolean;
 }
 
 /** Adapts authenticated, generic gateway reports to internal item IDs. */
 export class GatewayDetectionProvider implements DetectionProvider {
-  private receive?: (report: Report) => void;
+  private receive?: (report: Report) => boolean;
 
   report(report: Report) {
-    if (!this.receive) return false;
-    this.receive(report);
-    return true;
+    return this.receive?.(report) ?? false;
   }
 
   collect({ deadlineMs, items }: DetectionWindow, update: Parameters<DetectionProvider['collect']>[1]) {
@@ -49,8 +48,9 @@ export class GatewayDetectionProvider implements DetectionProvider {
         reject(new Error('The provider did not confirm the detection window. No missing-item result was recorded.'));
       }, Math.max(0, deadlineMs - Date.now()) + 3000);
 
-      this.receive = ({ identifiers, complete }) => {
+      this.receive = ({ identifiers, complete, requireInWindow }) => {
         const now = Date.now();
+        if (requireInWindow && now > deadlineMs) return false;
         if (now <= deadlineMs) {
           for (const identifier of identifiers) {
             const id = itemIds.get(identifier);
@@ -63,6 +63,7 @@ export class GatewayDetectionProvider implements DetectionProvider {
           clearTimeout(deadline);
           void pause(Math.max(0, deadlineMs - now)).then(() => resolve(detected));
         }
+        return true;
       };
     });
   }

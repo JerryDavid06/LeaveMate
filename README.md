@@ -50,15 +50,18 @@ The repository includes a Render Blueprint, Vercel settings, a Supabase migratio
 | `DEVICE_API_KEY` | Server and trusted device integration | Optional. Enables authenticated generic gateway requests. |
 | `PORT` | Server | Local default is 4100. Render sets its service port. |
 
-## Future device gateway
+<a id="future-device-gateway"></a>
 
-The contract below is an HTTP integration adapter. The firmware, transport from the eventual sensors to the gateway, and sensor technology remain open.
+## RFID station and device gateway
+
+The ESP32 station uses an RC522 RFID reader and two IR obstacle sensors. Follow the [wiring and enrollment guide](firmware/README.md) to connect it. The HTTP gateway accepts generic item identifiers so other providers can use the same verification engine.
 
 Send JSON with `x-device-key` set to the configured server secret. Use a real identifier for the producer that sends the heartbeat or departure. An accepted heartbeat or departure registers communication from that producer. The dashboard treats the last communication as stale after 90 seconds.
 
 - `POST /api/gateway/heartbeat` takes `{"deviceId":"doorway-station"}`.
 - `POST /api/gateway/departures` takes a UUID `id`, `eventType: "DEPARTURE_DETECTED"`, `source: "hardware"`, an ISO 8601 `timestamp`, and `deviceId`. The response gives the session ID and detection deadline. A duplicate ID or overlapping departure returns HTTP 409.
 - `POST /api/gateway/departures/{id}/reports` takes `{"identifiers":["registered-identifier"],"complete":false}`. Reports can arrive in batches. The identifier producer sends `complete: true` when finished, with any final identifiers reported within the returned deadline. The backend only accepts detections received within the window. An empty completion report can confirm that no items were detected. A three-second grace period permits a completion signal after the deadline. Without that signal, the session fails and does not classify items as missing.
+- A device that batches its scan into a single completion report can include `"requireInWindow":true`. The server rejects the whole report after the deadline, preserving the failed-verification outcome when a network delay prevents timely delivery.
 - Use `DEVICE_API_KEY` in the gateway environment, even when the actual departure trigger and identification producer are separate. The gateway is disabled until the key is configured.
 
 ## Verification
