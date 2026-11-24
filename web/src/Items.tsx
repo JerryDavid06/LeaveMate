@@ -1,8 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react';
-import { Box, Clock3, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
+import { Box, Clock3, Pencil, Plus, ScanLine, Search, Trash2 } from 'lucide-react';
 import { assignImage, categories, images, type ImageKey, type Item, type ItemInput, type Snapshot } from '../../shared/contracts';
 import { api, dateTime, itemInput, type Action } from './lib';
 import { Dialog, Empty, ItemImage, PageHeading, PriorityTag, Switch } from './ui';
+
+import { useUsbStation } from './usbStation';
 
 const emptyItem: ItemInput = {
   name: '', category: categories[0], description: '', priority: 'essential', monitoring: true,
@@ -12,6 +14,24 @@ const emptyItem: ItemInput = {
 export function ItemEditor({ item, state, act, onClose }: { item: Item | null; state: Snapshot; act: Action; onClose: () => void }) {
   const [form, setForm] = useState<ItemInput>(item ? itemInput(item) : emptyItem);
   const [busy, setBusy] = useState(false);
+  const usb = useUsbStation();
+  const uidField = useId();
+  const [scanning, setScanning] = useState(false);
+  const [captured, setCaptured] = useState<string | null>(null);
+  const { onTag } = usb;
+  useEffect(() => {
+    if (!scanning || usb.phase !== 'connected') return;
+    const unsubscribe = onTag(({ uid }) => {
+      unsubscribe();
+      setForm(prior => ({ ...prior, identifier: uid }));
+      setCaptured(uid);
+      setScanning(false);
+    });
+    return unsubscribe;
+  }, [scanning, onTag, usb.phase]);
+  useEffect(() => {
+    if (usb.phase === 'idle' || usb.phase === 'closing') setScanning(false);
+  }, [usb.phase]);
   const update = <K extends keyof ItemInput>(field: K, value: ItemInput[K]) => setForm((prior) => ({ ...prior, [field]: value }));
   const list = [...new Set([...categories, ...state.items.map((entry) => entry.category)])];
   async function save(event: FormEvent) {
@@ -34,9 +54,29 @@ export function ItemEditor({ item, state, act, onClose }: { item: Item | null; s
         </select></label>
       </div>
       <label>Description <span className="muted">(optional)</span><textarea rows={2} maxLength={500} value={form.description} onChange={(event) => update('description', event.target.value)} /></label>
-      <label>Detection identifier <span className="muted">(optional)</span>
-        <input maxLength={120} value={form.identifier ?? ''} onChange={(event) => update('identifier', event.target.value)} placeholder="Add later when hardware is ready" />
-      </label>
+      <div className="rfid-field">
+        <label htmlFor={uidField}>RFID tag UID <span className="muted">(optional)</span></label>
+        <div className="rfid-input-row">
+          <input id={uidField} maxLength={120} value={form.identifier ?? ''} placeholder="Scan a tag or enter its UID"
+            onChange={(event) => { setScanning(false); setCaptured(null); update('identifier', event.target.value); }} />
+          <button type="button" className="button button-white" disabled={!usb.supported || busy || usb.phase === 'opening' || usb.phase === 'closing'}
+            onClick={async () => {
+              setCaptured(null);
+              setScanning(!scanning);
+              if (!scanning && usb.phase !== 'connected' && !await usb.connect()) setScanning(false);
+            }}>
+            <ScanLine size={16} aria-hidden="true" />{scanning && usb.phase === 'connected' ? 'Cancel scan' : 'Scan RFID'}
+          </button>
+        </div>
+        <div role="status" className="usb-message">
+          {!usb.supported ? 'Open LeaveMate in desktop Chrome or Edge to scan over USB.' :
+            usb.phase === 'opening' && scanning ? 'Select the ESP32 in the browser’s USB port chooser.' :
+            scanning ? 'Tap the tag on an RFID reader now.' :
+            captured ? `Scanned ${captured}. Save the belonging to register this UID.` :
+            'Close Arduino Serial Monitor before opening the USB connection.'}
+        </div>
+        {usb.error && <p role="alert" className="usb-message">{usb.error}</p>}
+      </div>
       <div className="image-picker"><ItemImage image={form.imageOverride ?? assignImage(form.name, form.category)} category={form.category} />
         <label>Item image<select value={form.imageOverride ?? ''} onChange={(event) => update('imageOverride', (event.target.value || null) as ImageKey | null)}>
           <option value="">Match automatically</option>{images.map((image) => <option value={image} key={image}>{image.replace('-', ' ')}</option>)}

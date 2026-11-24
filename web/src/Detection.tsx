@@ -4,6 +4,8 @@ import type { DetectionProgress, Snapshot } from '../../shared/contracts';
 import { api, dateTime, type Action } from './lib';
 import { Empty, ItemImage, Metric, ModeTag, PageHeading, Panel, PriorityTag } from './ui';
 
+import { UsbStationPanel } from './UsbStationPanel';
+
 export function Detection({ state, progress, error, act, acceptProgress, addItem }: {
   state: Snapshot; progress: DetectionProgress | null; error: string | null; act: Action;
   acceptProgress: (progress: DetectionProgress) => void; addItem: () => void;
@@ -28,6 +30,7 @@ export function Detection({ state, progress, error, act, acceptProgress, addItem
   return <>
     <PageHeading label="WORKSPACE / DEPARTURE STATION" title="Detection & Verification" description={caption}><ModeTag state={state} /></PageHeading>
     {error && <div role="alert" className="inline-alert"><CircleAlert size={18} />{error}</div>}
+    <UsbStationPanel items={state.items} />
     <div className="metrics-grid detection-metrics">
       <Metric icon={ListChecks} title="Expected items" value={snapshot.length} note={progress ? 'In the current detection window' : latest ? 'In the latest completed check' : 'Currently enabled for monitoring'} tone="gold" />
       <Metric icon={Check} title="Detected items" value={detected ?? '—'} note={progress ? 'Reported so far' : 'In the latest completed check'} tone="green" />
