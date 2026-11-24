@@ -14,6 +14,7 @@ import { Detection } from './Detection';
 import { ItemEditor, Items } from './Items';
 import { api, apiUrl, dateTime, type Action } from './lib';
 import { Overview, type Page } from './Overview';
+import { UsbStationProvider } from './usbStation';
 import { Settings } from './Settings';
 import { ActionError, BrandMark, Empty } from './ui';
 import { sendBrowserNotification, useVoice } from './voice';
@@ -267,4 +268,4 @@ function App() {
   </ActionError.Provider>;
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><UsbStationProvider><App /></UsbStationProvider></StrictMode>);

@@ -348,3 +348,16 @@ input[type=checkbox], input[type=range], progress { accent-color: #a07914; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation-duration: .001ms !important; }
 }
+
+.usb-station { margin-bottom: 16px; }
+.usb-station .panel-heading, .usb-station-details { flex-wrap: wrap; }
+.usb-station-details { display: flex; align-items: center; gap: 8px 12px; }
+.usb-station-details p, .usb-message { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.usb-station .usb-message, .usb-log { margin-top: 10px; }
+.usb-log {
+  max-height: 230px; overflow: auto; padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: 11px; background: var(--cream); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.rfid-field { display: grid; gap: 6px; }
+.rfid-input-row { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.rfid-input-row input { flex: 1 1 160px; min-width: 0; }
