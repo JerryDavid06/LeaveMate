@@ -114,15 +114,15 @@ test('item CRUD, validation, realtime simulation, alerts and durable history', a
     assert.equal((await state()).alerts[0].priority, 'normal');
     assert.equal((await api('/gateway/departures', 'POST', event, gateway)).status, 409);
 
-    const noCompletion = { ...event, id: randomUUID() };
-    const failed = once(socket, 'verification_failed');
-    assert.equal((await api('/gateway/departures', 'POST', noCompletion, gateway)).status, 202);
+    const delayedCompletion = { ...event, id: randomUUID() };
+    const delayedFinished = once(socket, 'verification_completed');
+    assert.equal((await api('/gateway/departures', 'POST', delayedCompletion, gateway)).status, 202);
     await pause(1100);
-    assert.equal((await api('/gateway/departures/' + noCompletion.id + '/reports', 'POST', {
+    assert.equal((await api('/gateway/departures/' + delayedCompletion.id + '/reports', 'POST', {
       identifiers: ['generic-wallet'], complete: true, requireInWindow: true,
-    }, gateway)).status, 409);
+    }, gateway)).status, 204);
+    assert.equal((await delayedFinished)[0].status, 'incomplete');
     assert.equal((await state()).sessions.length, 3);
-    assert.equal((await failed)[0].id, noCompletion.id);
     assert.equal((await state()).alerts.length, 2);
 
     assert.equal((await api('/settings', 'PUT', { ...preferences, simulationMode: false })).status, 204);

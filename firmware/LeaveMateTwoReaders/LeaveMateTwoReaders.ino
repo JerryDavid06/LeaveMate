@@ -166,6 +166,17 @@ void showTag(const String& uid, int input) {
   Serial.printf("Reader %d RFID UID: %s\n", input + 1, uid.c_str());
 }
 
+int sendReport(const String& path, const std::vector<String>& tags, bool complete) {
+  JsonDocument report;
+  JsonArray identifiers = report["identifiers"].to<JsonArray>();
+  for (const String& uid : tags) identifiers.add(uid);
+  report["complete"] = complete;
+  // The server holds a short grace period for the final reply, so a slow
+  // connection never discards a valid departure check.
+  report["requireInWindow"] = false;
+  return post(path, report, nullptr);
+}
+
 void runCheck() {
   if (!online() || !readerReady(reader1) || !readerReady(reader2)) {
     Serial.println("Check skipped. Verify Wi-Fi, time sync, and both readers.");
@@ -211,20 +222,23 @@ void runCheck() {
         if (tags.size() == 300) return;
         tags.push_back(uid);
         Serial.printf("Reader %d RFID UID: %s\n", i + 1, uid.c_str());
+        const String path = String("/api/gateway/departures/") + id + "/reports";
+        const int status = sendReport(path, tags, false);
+        Serial.printf("Scan update sent (HTTP %d).\n", status);
       }
     }
   }
-  if (WiFi.status() != WL_CONNECTED || !readerReady(reader1) || !readerReady(reader2)) {
-    Serial.println("Scan interrupted. Check the readers and Wi-Fi.");
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Scan interrupted. Check Wi-Fi.");
     return;
   }
-  JsonDocument report;
-  JsonArray identifiers = report["identifiers"].to<JsonArray>();
-  for (const String& uid : tags) identifiers.add(uid);
-  report["complete"] = true;
-  report["requireInWindow"] = true;
   const String path = String("/api/gateway/departures/") + id + "/reports";
-  Serial.printf("Results sent (HTTP %d).\n", post(path, report, nullptr));
+  for (int attempt = 1; attempt <= 3; ++attempt) {
+    const int status = sendReport(path, tags, true);
+    Serial.printf("Final results, attempt %d (HTTP %d).\n", attempt, status);
+    if (status == 204) break;
+    delay(1200);
+  }
 }
 
 void setup() {
