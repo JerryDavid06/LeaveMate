@@ -54,7 +54,7 @@ The repository includes a Render Blueprint, Vercel settings, a Supabase migratio
 
 ## RFID station and device gateway
 
-The ESP32 station uses an RC522 RFID reader and two IR obstacle sensors. Follow the [wiring and enrollment guide](firmware/README.md) to connect it. The HTTP gateway accepts generic item identifiers so other providers can use the same verification engine.
+For your setup with **two RC522 readers and one IR obstacle sensor**, use [LeaveMateTwoReaders.ino](firmware/LeaveMateTwoReaders/LeaveMateTwoReaders.ino) and its [wiring guide](firmware/LeaveMateTwoReaders/WIRING.md). The original [single-reader station](firmware/README.md) supports two IR obstacle sensors for direction detection. The HTTP gateway accepts generic item identifiers so other providers can use the same verification engine.
 
 Send JSON with `x-device-key` set to the configured server secret. Use a real identifier for the producer that sends the heartbeat or departure. An accepted heartbeat or departure registers communication from that producer. The dashboard treats the last communication as stale after 90 seconds.
 
